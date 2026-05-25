@@ -673,14 +673,24 @@ static struct ctl_table agent_ns_sysctls[] = {
 
 static int __init agent_ns_init(void)
 {
-	agent_ns_cache = KMEM_CACHE(agent_namespace, SLAB_PANIC | SLAB_ACCOUNT);
-	agent_ns_link_cache = KMEM_CACHE(agent_ns_link, SLAB_PANIC | SLAB_ACCOUNT);
+	/*
+	 * SLAB_ACCOUNT is intentionally NOT set: it depends on memcg, which is
+	 * initialized at subsys_initcall. These caches hold tiny per-session
+	 * kernel objects; charging to memcg is not worth the boot-order coupling.
+	 * Combined with SLAB_PANIC, the earlier flag caused a silent panic during
+	 * early_initcall before the framebuffer console was up — invisible hang
+	 * on the firmware splash. See: 2026-05-25 wintermute boot hang.
+	 */
+	agent_ns_cache = KMEM_CACHE(agent_namespace, SLAB_PANIC);
+	agent_ns_link_cache = KMEM_CACHE(agent_ns_link, SLAB_PANIC);
 
 	/* set init_agent_ns inum so /proc/$PID/ns/agent for init tasks resolves */
 	if (__ns_common_init(&init_agent_ns.ns, CLONE_NEWAGENT,
 			     &agentns_operations, 0))
 		pr_warn("agent_ns: failed to init init NS ns_common\n");
 	init_agent_ns.counters = alloc_percpu(struct agent_ns_counters_pcp);
+	if (!init_agent_ns.counters)
+		pr_warn("agent_ns: failed to alloc init NS counters\n");
 	init_agent_ns.created_ns = ktime_get_boottime_ns();
 
 	register_sysctl_init("kernel/agent_ns", agent_ns_sysctls);
@@ -690,4 +700,13 @@ static int __init agent_ns_init(void)
 		sysctl_agent_ns_enabled, sysctl_agent_ns_max_lifetime);
 	return 0;
 }
-early_initcall(agent_ns_init);
+/*
+ * subsys_initcall (not early_initcall): memcg, workqueue, and slab_state
+ * full are all guaranteed up here. The init NS is statically initialized
+ * (see init_agent_ns above), so kthreads forked before this initcall runs
+ * already inherit a valid &init_agent_ns pointer via init_nsproxy; only
+ * counters and the proc inum are filled in here, both of which are
+ * NULL-tolerant on the readers' side (see cur_counters() and the
+ * `ns == &init_agent_ns` early-return in agent_ns_counters_snapshot()).
+ */
+subsys_initcall(agent_ns_init);
