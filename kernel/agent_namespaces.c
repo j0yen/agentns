@@ -668,18 +668,31 @@ static struct ctl_table agent_ns_sysctls[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_douintvec,
 	},
-	{ }
 };
 
 static int __init agent_ns_init(void)
 {
 	/*
-	 * SLAB_ACCOUNT is intentionally NOT set: it depends on memcg, which is
-	 * initialized at subsys_initcall. These caches hold tiny per-session
-	 * kernel objects; charging to memcg is not worth the boot-order coupling.
-	 * Combined with SLAB_PANIC, the earlier flag caused a silent panic during
-	 * early_initcall before the framebuffer console was up — invisible hang
-	 * on the firmware splash. See: 2026-05-25 wintermute boot hang.
+	 * Compile-time guard: CLONE_NEWAGENT must not alias any existing
+	 * upstream CLONE_* bit. An earlier version used 0x00000100 which
+	 * silently aliased CLONE_VM — every kthread fork was interpreted
+	 * as also requesting a new agent namespace, and copy_agent_ns ran
+	 * before agent_ns_cache existed (this initcall hadn't fired yet),
+	 * which hung the kernel before the framebuffer console came up.
+	 */
+	BUILD_BUG_ON(CLONE_NEWAGENT & (CSIGNAL | CLONE_VM | CLONE_FS |
+		CLONE_FILES | CLONE_SIGHAND | CLONE_PIDFD | CLONE_PTRACE |
+		CLONE_VFORK | CLONE_PARENT | CLONE_THREAD | CLONE_NEWNS |
+		CLONE_SYSVSEM | CLONE_SETTLS | CLONE_PARENT_SETTID |
+		CLONE_CHILD_CLEARTID | CLONE_DETACHED | CLONE_UNTRACED |
+		CLONE_CHILD_SETTID | CLONE_NEWCGROUP | CLONE_NEWUTS |
+		CLONE_NEWIPC | CLONE_NEWUSER | CLONE_NEWPID | CLONE_NEWNET |
+		CLONE_IO | CLONE_NEWTIME));
+	BUILD_BUG_ON(CLONE_NEWAGENT & (CLONE_CLEAR_SIGHAND | CLONE_INTO_CGROUP));
+
+	/*
+	 * SLAB_ACCOUNT intentionally not set: charging tiny per-session NS
+	 * objects to memcg isn't worth the boot-order coupling.
 	 */
 	agent_ns_cache = KMEM_CACHE(agent_namespace, SLAB_PANIC);
 	agent_ns_link_cache = KMEM_CACHE(agent_ns_link, SLAB_PANIC);
