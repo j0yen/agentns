@@ -23,6 +23,7 @@
 #include <linux/err.h>
 #include <linux/jiffies.h>
 #include <linux/ktime.h>
+#include <linux/kref.h>
 #include <linux/list.h>
 #include <linux/proc_ns.h>
 #include <linux/random.h>
