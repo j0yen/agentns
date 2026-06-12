@@ -76,12 +76,38 @@ BUILD_KERNEL=0 ./scripts/build.sh
 KVER=7.1.2 ./scripts/build.sh
 ```
 
-Install with the usual Arch flow (`makepkg -i` from the package
-directory, or copy the resulting `vmlinuz`/modules into `/boot` and
-regenerate the initramfs). Reboot to pick up the patched kernel. The
-agent namespace is enabled by default (`CONFIG_AGENT_NS=y`); the user
-can disable at runtime with `sysctl -w kernel.agent_ns.enabled=0`,
-which makes every counter hook a no-op.
+## Installation
+
+Once the kernel package is built (see `scripts/build.sh` or the
+`~/wintermute/wintermute-kernel/pkg/` PKGBUILD), install it with the
+usual Arch flow:
+
+```bash
+# from the pkg/ directory
+sudo pacman -U linux-wintermute-*.pkg.tar.zst linux-wintermute-headers-*.pkg.tar.zst
+# or via makepkg:
+cd ~/wintermute/wintermute-kernel/pkg && makepkg -e --skippgpcheck --noconfirm -i
+```
+
+After installation, reboot to activate the patched kernel. Once running
+under `linux-wintermute`, apply the agentns patches with:
+
+```bash
+cd ~/wintermute/agentns && python3 scripts/apply-agentns.py
+```
+
+The agent namespace is enabled by default (`CONFIG_AGENT_NS=y`). You can
+disable it at runtime without rebooting:
+
+```bash
+sysctl -w kernel.agent_ns.enabled=0   # makes all counter hooks no-ops
+```
+
+Verify the namespace is live:
+
+```bash
+agentns-unshare cat /proc/self/agent_session   # should print a non-zero 128-bit id
+```
 
 ## Rebasing onto a new kernel
 
